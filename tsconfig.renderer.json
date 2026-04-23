@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "types": ["vite/client"],
+    "noEmit": true
+  },
+  "include": [
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.vue",
+    "src/renderer/**/*.d.ts",
+    "src/shared/**/*.ts"
+  ],
+  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.vue", "src/shared/**/*.ts"],
+  "exclude": ["src/main/**/*", "src/preload/**/*"]
+}
