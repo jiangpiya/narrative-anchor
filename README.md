@@ -1,4 +1,4 @@
-叙事之锚 (Narrative Anchor)
+叙事锚点 (Narrative Anchor)
 一个基于 Electron + Vue 3 的单机叙事游戏引擎，集成大语言模型（DeepSeek/OpenAI）实现动态剧情生成、NPC 智能对话、状态管理与持久化存档。
 
 https://img.shields.io/badge/license-MIT-blue.svg

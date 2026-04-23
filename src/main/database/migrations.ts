@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
@@ -62,4 +63,12 @@ export async function runMigrations(db: Database.Database): Promise<void> {
       throw err; // 阻止应用启动
     }
   }
+}
+const isDev = !app.isPackaged;
+let migrationsDir: string;
+if (isDev) {
+  migrationsDir = path.join(__dirname, 'migrations');
+} else {
+  // 生产环境，文件被复制到 resources 目录
+  migrationsDir = path.join(process.resourcesPath, 'database', 'migrations');
 }
