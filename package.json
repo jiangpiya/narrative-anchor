@@ -1,16 +1,64 @@
 {
   "name": "narrative-anchor",
   "version": "1.0.0",
+  "description": "叙事锚点 - 一个融合叙事与 AI 的交互式游戏引擎",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build && npm run build:preload && npm run copy:migrations",
     "build:preload": "tsc -p tsconfig.preload.json",
     "copy:migrations": "node -e \"const fs=require('fs'); fs.cpSync('src/main/database/migrations', 'dist/main/database/migrations', {recursive:true})\"",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .ts,.vue",
+    "format": "prettier --write .",
+    "postinstall": "electron-rebuild",
+    "rebuild": "electron-rebuild",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux"
+  },
+  "keywords": [
+    "electron",
+    "vue",
+    "narrative",
+    "game",
+    "ai"
+  ],
+  "author": "胡成辉",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/electron-store": "^1.3.1",
+    "@types/howler": "^2.2.12",
+    "@types/lodash": "^4.17.24",
+    "@types/marked": "^5.0.2",
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "electron": "^41.1.1",
+    "electron-builder": "^24.13.3",
+    "electron-packager": "^17.1.2",
+    "electron-rebuild": "^3.2.9",
+    "eslint": "^8.54.0",
+    "eslint-plugin-vue": "^9.19.2",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.2",
+    "vite": "^5.0.0",
+    "vite-plugin-electron": "^0.28.0",
+    "vue-tsc": "^1.8.25"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "electron-store": "^8.2.0",
+    "howler": "^2.2.4",
+    "lodash": "^4.18.1",
+    "mammoth": "^1.12.0",
+    "marked": "^11.2.0",
+    "pinia": "^2.3.1",
+    "vue": "^3.3.8",
+    "vue-router": "^4.6.4"
   },
   "build": {
     "appId": "io.github.jiangpiya.narrativeanchor",
@@ -31,20 +79,32 @@
       {
         "from": "src/main/database/migrations",
         "to": "database/migrations",
-        "filter": ["**/*.sql"]
+        "filter": [
+          "**/*.sql"
+        ]
       }
+    ],
+    "nodeGypRebuild": false,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
     ],
     "win": {
       "target": ["nsis", "portable"],
       "icon": "build/icon.ico"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "build/icon.icns",
       "category": "public.app-category.games"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "build/icon.png",
       "category": "Game"
     },
