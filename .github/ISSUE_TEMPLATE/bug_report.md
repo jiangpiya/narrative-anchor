@@ -1,34 +1,38 @@
 ---
-name: Bug 反馈
-about: 报告一个 Bug，帮助我们改进
-title: "[Bug] "
-labels: bug
+name: Bug report
+about: Create a report to help us improve
+title: ''
+labels: ''
 assignees: ''
+
 ---
 
-**问题描述**
-简单清晰地描述你遇到的问题。
+**Describe the bug**
+A clear and concise description of what the bug is.
 
-**复现步骤**
-1. 进入 '...'
-2. 点击 '...'
-3. 看到错误
+**To Reproduce**
+Steps to reproduce the behavior:
+1. Go to '...'
+2. Click on '....'
+3. Scroll down to '....'
+4. See error
 
-**预期行为**
-你期望发生什么。
+**Expected behavior**
+A clear and concise description of what you expected to happen.
 
-**实际行为**
-实际发生了什么。
+**Screenshots**
+If applicable, add screenshots to help explain your problem.
 
-**截图**
-如有，请附上截图。
+**Desktop (please complete the following information):**
+ - OS: [e.g. iOS]
+ - Browser [e.g. chrome, safari]
+ - Version [e.g. 22]
 
-**环境信息**
-- 操作系统：[例如 Windows 11 / macOS 14 / Ubuntu 22.04]
-- 应用版本：[例如 1.0.0]
-- AI 供应商：[DeepSeek / OpenAI / 自定义]
-- 模型名称：[例如 deepseek-chat]
-- Node.js 版本（如适用）：
+**Smartphone (please complete the following information):**
+ - Device: [e.g. iPhone6]
+ - OS: [e.g. iOS8.1]
+ - Browser [e.g. stock browser, safari]
+ - Version [e.g. 22]
 
-**补充说明**
-其他相关信息。
+**Additional context**
+Add any other context about the problem here.
