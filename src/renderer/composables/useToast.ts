@@ -1,11 +1,11 @@
-import { useToastStore } from '../stores/toast';
+import { useMessage } from 'naive-ui';
 
 export function useToast() {
-  const store = useToastStore();
+  const message = useMessage();
   return {
-    success: (msg: string) => store.success(msg),
-    error:   (msg: string) => store.error(msg),
-    warning: (msg: string) => store.warning(msg),
-    info:    (msg: string) => store.info(msg),
+    success: (msg: string) => message.success(msg),
+    error:   (msg: string) => message.error(msg),
+    warning: (msg: string) => message.warning(msg),
+    info:    (msg: string) => message.info(msg),
   };
 }

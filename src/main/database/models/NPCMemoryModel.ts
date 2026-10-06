@@ -126,14 +126,31 @@ deleteMemory(memoryId: number): void {
 }
 
 /**
- * 删除指定 NPC 的所有记忆（重置）
- * @param sessionUuid 会话 UUID
- * @param npcName NPC 名称
- */
+   * 删除指定 NPC 的所有记忆（重置）
+   * @param sessionUuid 会话 UUID
+   * @param npcName NPC 名称
+   */
 deleteAllByNPC(sessionUuid: string, npcName: string): void {
   const stmt = this.db.prepare('DELETE FROM npc_memories WHERE session_id = ? AND npc_name = ?');
   const result = stmt.run(sessionUuid, npcName);
   // 即使没有记录也不报错，返回成功
+}
+
+/**
+ * NPC 改名后，级联更新其所有记忆的冗余 npc_name 列
+ * npcid 保持不变（同一个 NPC 主键），仅同步名称
+ * @param sessionId 会话 UUID
+ * @param oldName 曾用名
+ * @param newName 新名称
+ * @returns 受影响的记忆行数
+ */
+renameForNPC(sessionId: string, oldName: string, newName: string): number {
+  const stmt = this.db.prepare(`
+    UPDATE npc_memories
+    SET npc_name = ?
+    WHERE session_id = ? AND npc_name = ?
+  `);
+  return stmt.run(newName, sessionId, oldName).changes;
 }
 
 }

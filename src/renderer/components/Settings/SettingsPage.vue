@@ -19,20 +19,61 @@
 
     <!-- 各标签页内容（精简样式，保留功能） -->
     <div v-if="activeTab === 'audio'" class="tab-content">
-      <div class="settings-panel glass-panel">
-        <div class="setting-row">
-          <label>背景音乐音量</label>
-          <input type="range" min="0" max="1" step="0.01" v-model="bgmVolume" @input="saveBgmVolume" />
-          <span>{{ Math.round(bgmVolume * 100) }}%</span>
-        </div>
-        <div class="setting-row">
-          <label>环境音效音量</label>
-          <input type="range" min="0" max="1" step="0.01" v-model="ambientVolume" @input="saveAmbientVolume" />
-          <span>{{ Math.round(ambientVolume * 100) }}%</span>
-        </div>
-        <div class="setting-row">
-          <label>静音</label>
-          <input type="checkbox" v-model="muted" @change="toggleMute" />
+      <div class="audio-wrap">
+        <div class="audio-card">
+          <!-- 卡片头部：标题 + 静音开关 -->
+          <div class="audio-head">
+            <div class="audio-title">
+              <span class="audio-title-icon">🔊</span>
+              <span>音频设置</span>
+            </div>
+            <n-switch v-model:value="muted" size="small" @update:value="onMuteChange">
+              <template #checked>静音</template>
+              <template #unchecked>有声</template>
+            </n-switch>
+          </div>
+
+          <!-- 背景音乐 -->
+          <div class="audio-row">
+            <div class="audio-label"><span>🎵</span><span>背景音乐</span></div>
+            <n-slider
+              v-model:value="bgmVolume"
+              class="audio-slider"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              :tooltip="false"
+              @update:value="onBgmPreview"
+            />
+            <div class="audio-value">{{ Math.round(bgmVolume * 100) }}%</div>
+          </div>
+
+          <!-- 环境音效 -->
+          <div class="audio-row">
+            <div class="audio-label"><span>🌬️</span><span>环境音效</span></div>
+            <n-slider
+              v-model:value="ambientVolume"
+              class="audio-slider"
+              :min="0"
+              :max="1"
+              :step="0.01"
+              :tooltip="false"
+              @update:value="onAmbientPreview"
+            />
+            <div class="audio-value">{{ Math.round(ambientVolume * 100) }}%</div>
+          </div>
+
+          <!-- 确认按钮 -->
+          <div class="audio-foot">
+            <n-button
+              type="primary"
+              :disabled="!volumeDirty"
+              :loading="savingVolume"
+              @click="confirmVolume"
+            >
+              确认
+            </n-button>
+          </div>
         </div>
       </div>
     </div>
@@ -134,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, inject } from 'vue';
+import { ref, computed, onMounted, inject } from 'vue';
 import DocUploader from './DocUploader.vue';
 import DocCleaner from './DocCleaner.vue';
 import NPCKnowledgeEditor from '../../components/NPCKnowledgeEditor.vue';
@@ -147,6 +188,7 @@ import { useToast } from '../../composables/useToast';
 import { useConfirm } from '../../composables/useConfirm';
 import StateGroupEditor from './StateGroupEditor.vue';
 import { audioService } from '../../services/audioService';
+import { NSlider, NSwitch, NButton } from 'naive-ui';
 import SummaryViewer from './SummaryViewer.vue';
 
 const gameStore = useGameSessionStore();
@@ -154,26 +196,50 @@ const settingsStore = useSettingsStore();
 const toast = useToast();
 const confirm = useConfirm();
 
-// 音频设置
-const bgmVolume = ref(0.6);
-const ambientVolume = ref(0.4);
-const muted = ref(false);
+// 音频设置：从已持久化的值初始化，拖动滑块仅改本地值，点“确认”后才应用并保存
+const bgmVolume = ref(settingsStore.bgmVolume);
+const ambientVolume = ref(settingsStore.ambientVolume);
+const muted = ref(audioService.getMuted());
+const savingVolume = ref(false);
 
-function saveBgmVolume() {
-  audioService.setBgmVolume(bgmVolume.value);
+// 是否与已保存值不同（无变化时禁用确认按钮）
+const volumeDirty = computed(
+  () =>
+    bgmVolume.value !== settingsStore.bgmVolume ||
+    ambientVolume.value !== settingsStore.ambientVolume
+);
+
+async function confirmVolume() {
+  if (!volumeDirty.value || savingVolume.value) return;
+  savingVolume.value = true;
+  try {
+    await settingsStore.saveBgmVolume(bgmVolume.value);
+    await settingsStore.saveAmbientVolume(ambientVolume.value);
+    toast.success('音量已保存');
+  } catch (err: any) {
+    toast.error(`音量保存失败: ${err?.message || err}`);
+  } finally {
+    savingVolume.value = false;
+  }
 }
-function saveAmbientVolume() {
-  audioService.setAmbientVolume(ambientVolume.value);
+
+function onMuteChange(value: boolean) {
+  audioService.mute(value);
 }
-function toggleMute() {
-  audioService.mute(muted.value);
+
+// 拖动滑块：立即试听（仅应用到正在播放的音频，不落盘；静音时不解除静音）
+function onBgmPreview(value: number) {
+  if (!muted.value) audioService.setBgmVolume(value);
+}
+function onAmbientPreview(value: number) {
+  if (!muted.value) audioService.setAmbientVolume(value);
 }
 
 // 视频设置
 const isFullscreen = ref(false);
 async function toggleFullscreen() {
   if (!window.electronAPI.setWindowFullscreen) {
-    alert('全屏功能未支持');
+    toast.error('全屏功能未支持');
     return;
   }
   const newState = await window.electronAPI.setWindowFullscreen(!isFullscreen.value);
@@ -444,6 +510,76 @@ onMounted(() => {
 .setting-row input[type="range"] {
   flex: 1;
   min-width: 200px;
+}
+
+/* ===== 音频设置样板（Naive UI + 玻璃容器） ===== */
+.audio-wrap {
+  padding: var(--space-7);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+.audio-card {
+  width: 100%;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  padding: var(--space-6);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.audio-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.audio-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.audio-title-icon {
+  font-size: 1.15rem;
+}
+.audio-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.audio-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 104px;
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+.audio-slider {
+  flex: 1;
+  min-width: 0;
+}
+.audio-value {
+  width: 46px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.audio-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-2);
 }
 
 .doc-list {

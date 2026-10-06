@@ -51,8 +51,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import { useGameSessionStore } from '../../stores/gameSession';
+import { useToast } from '../../composables/useToast';
+import { useConfirm } from '../../composables/useConfirm';
 
 const gameStore = useGameSessionStore();
+const toast = useToast();
+const confirm = useConfirm();
 const events = ref<any[]>([]);
 const loading = ref(false);
 const showEditDialog = ref(false);
@@ -77,16 +81,17 @@ async function loadEvents() {
 }
 
 async function deleteEvent(eventId: number) {
-  if (!confirm('确定删除此关键事件吗？')) return;
+  const ok = await confirm('删除关键事件', '确定删除此关键事件吗？');
+  if (!ok) return;
   try {
     const res = await window.electronAPI.game.deleteKeyEvent(eventId);
     if (res.success) {
       await loadEvents();
     } else {
-      alert(res.error || '删除失败');
+      toast.error(res.error || '删除失败');
     }
   } catch (err: any) {
-    alert(err.message);
+    toast.error(err.message);
   }
 }
 
@@ -97,7 +102,7 @@ function editEvent(evt: any) {
 
 async function saveEdit() {
   if (!editForm.value.name.trim()) {
-    alert('事件名称不能为空');
+    toast.error('事件名称不能为空');
     return;
   }
   try {
@@ -110,10 +115,10 @@ async function saveEdit() {
       await loadEvents();
       closeEditDialog();
     } else {
-      alert(res.error || '保存失败');
+      toast.error(res.error || '保存失败');
     }
   } catch (err: any) {
-    alert(err.message);
+    toast.error(err.message);
   }
 }
 

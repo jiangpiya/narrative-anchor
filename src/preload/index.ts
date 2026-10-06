@@ -20,6 +20,8 @@ const electronAPI = {
     addNPCMemory: (params: any) => ipcRenderer.invoke(IPCChannels.ADD_NPC_MEMORY, params),
     getNPCMemories: (params: any) => ipcRenderer.invoke(IPCChannels.GET_NPC_MEMORIES, params),
     updateNPCRelation: (params: { sessionUuid: string; name: string; relationValue?: number; relation?: string }) =>ipcRenderer.invoke('game:updateNPCRelation', params),
+    renameNPC: (params: { sessionUuid: string; oldName: string; newName: string }) =>
+      ipcRenderer.invoke('game:renameNPC', params),
     duplicateSession: (sessionUuid: string, newName: string) =>ipcRenderer.invoke('game:duplicateSession', sessionUuid, newName),
     deleteSession: (sessionUuid: string) =>ipcRenderer.invoke('game:deleteSession', sessionUuid),
     saveSummary: (sessionUuid: string, startDialogueId: number | null, endDialogueId: number | null, summaryText: string) =>
@@ -33,6 +35,8 @@ const electronAPI = {
     ipcRenderer.invoke('game:getKeyEvents', sessionUuid, limit),
     deleteKeyEvent: (eventId: number) =>
     ipcRenderer.invoke('game:deleteKeyEvent', eventId),
+    updateKeyEvent: (eventId: number, eventName: string, eventDescription: string) =>
+    ipcRenderer.invoke('game:updateKeyEvent', eventId, eventName, eventDescription),
     getStateSchema: (sessionUuid: string) => ipcRenderer.invoke('game:getStateSchema', sessionUuid),
     saveStateSchema: (sessionUuid: string, schema: any[]) => ipcRenderer.invoke('game:saveStateSchema', sessionUuid, schema),
     getStateGroups: (sessionUuid: string) => ipcRenderer.invoke('game:getStateGroups', sessionUuid),

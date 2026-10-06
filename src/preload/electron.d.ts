@@ -66,6 +66,7 @@ declare global {
         addNPCMemory(params: AddNPCMemoryParams): Promise<IpcResponse<void>>;
         getNPCMemories(params: GetNPCMemoriesParams): Promise<IpcResponse<NPCMemoryData[]>>;
         updateNPCRelation: (params: {sessionUuid: string,name: string,relationValue?: number,relation?: string}) => Promise<any>;
+        renameNPC: (params: { sessionUuid: string; oldName: string; newName: string }) => Promise<{ success: boolean; error?: string }>;
         renameSession(sessionUuid: string, newName: string): Promise<{ success: boolean; error?: string }>;
         duplicateSession(sessionUuid: string, newName: string): Promise<{ success: boolean; sessionUuid?: string; error?: string }>;
         deleteSession(sessionUuid: string): Promise<{ success: boolean; error?: string }>;
@@ -74,6 +75,7 @@ declare global {
         addKeyEvent(sessionUuid: string, eventName: string, eventDescription: string): Promise<{ success: boolean; eventId?: number; error?: string }>;
         getKeyEvents(sessionUuid: string, limit?: number): Promise<{ success: boolean; events?: KeyEventRow[]; error?: string }>;
         deleteKeyEvent(eventId: number): Promise<{ success: boolean; error?: string }>;
+        updateKeyEvent(eventId: number, eventName: string, eventDescription: string): Promise<{ success: boolean; error?: string }>;
         getStateSchema(sessionUuid: string): Promise<{ success: boolean; schema?: any[]; error?: string }>;
         saveStateSchema(sessionUuid: string, schema: any[]): Promise<{ success: boolean; error?: string }>;
         getStateGroups(sessionUuid: string): Promise<{ success: boolean; groups?: any[]; error?: string }>;

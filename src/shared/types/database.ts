@@ -59,6 +59,7 @@ export interface NPCRow {
   personality: string | null; // JSON string
   background: string | null;
   avatar_path: string | null;
+  aliases: string;            // 曾用称谓，JSON 字符串数组
   created_at: string;
   updated_at: string;
 }

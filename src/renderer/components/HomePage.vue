@@ -53,12 +53,14 @@
       <h3>📐 定义玩家状态结构</h3>
       <button v-audio:click class="btn btn-secondary" @click="closeSchemaEditor">返回</button>
     </div>
-    <p class="hint">你可以自定义玩家状态的字段（游戏中可编辑，但已存数据可能不兼容）。</p>
-    <StateSchemaEditor
-      :sessionId="newSessionId"
-      @saved="onSchemaSaved"
-      @cancel="closeSchemaEditor"
-    />
+    <div class="schema-editor-body">
+      <p class="hint">你可以自定义玩家状态的字段（游戏中可编辑，但已存数据可能不兼容）。</p>
+      <StateSchemaEditor
+        :sessionId="newSessionId"
+        @saved="onSchemaSaved"
+        @cancel="closeSchemaEditor"
+      />
+    </div>
   </div>
 </div>
   </div>
@@ -413,18 +415,28 @@ function formatDate(timestamp?: string) {
   to { transform: rotate(360deg); }
 }
 
-/* Schema 编辑器弹窗宽度 */
+/* Schema 编辑器弹窗：固定头部 + 内部单一滚动区 */
 .schema-editor-modal {
   width: 700px;
   max-width: 90vw;
   max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 圆角边框由外层裁剪，滚动条不再刺出边界 */
+  padding: 0;
+}
+
+.schema-editor-body {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  padding: 20px 28px 28px;
 }
 
 .hint {
   font-size: 0.8rem;
   color: #9ca3cf;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
 }
 
 .btn-secondary {
@@ -445,7 +457,11 @@ function formatDate(timestamp?: string) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 18px 28px;
+  margin-bottom: 0;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.25);
 }
 
 .schema-editor-modal .modal-header h3 {

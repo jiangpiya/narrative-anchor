@@ -1,37 +1,76 @@
 <template>
   <div class="message-list" ref="listRef">
-    <MessageBubble v-for="msg in messages" :key="msg.turn" :message="msg" />
+    <!-- 空状态：新存档尚未开始 -->
+    <div v-if="messages.length === 0" class="chat-empty">
+      <div class="empty-moon">🌙</div>
+      <h3>夜色已深，故事待启</h3>
+      <p>在下方写下你的第一个行动，开启这段叙事。</p>
+    </div>
+
+    <MessageBubble
+      v-for="msg in messages"
+      :key="msg.turn"
+      :message="msg"
+      @mark="openKeyEventDialog"
+    />
     <div ref="bottomRef"></div>
 
-    <!-- 自定义关键事件对话框 -->
-    <div v-if="showDialog" class="modal-overlay" @click.self="closeDialog">
-      <div class="modal-content">
-        <h3>标记关键事件</h3>
-        <div class="form-row">
+    <!-- 标记关键事件弹窗 -->
+    <n-modal
+      v-model:show="showDialog"
+      preset="card"
+      title="⭐ 标记关键事件"
+      class="key-event-modal"
+      :bordered="false"
+      style="width: 520px; max-width: calc(100vw - 48px)"
+      :mask-closable="false"
+    >
+      <div class="ke-form">
+        <div class="ke-field">
           <label>事件名称（简短）</label>
-          <input type="text" v-model="eventName" placeholder="例如：获得神器" />
+          <n-input
+            v-model:value="eventName"
+            placeholder="例如：获得神器"
+            maxlength="50"
+            show-count
+          />
         </div>
-        <div class="form-row">
+        <div class="ke-field">
           <label>事件描述（可选）</label>
-          <textarea v-model="eventDesc" rows="4" placeholder="详细描述..."></textarea>
-        </div>
-        <div class="modal-buttons">
-          <button v-audio:click @click="closeDialog">取消</button>
-          <button v-audio:click @click="confirmAddKeyEvent" class="confirm-btn">确定</button>
+          <n-input
+            v-model:value="eventDesc"
+            type="textarea"
+            :rows="4"
+            placeholder="详细描述..."
+          />
         </div>
       </div>
-    </div>
+      <template #footer>
+        <div class="ke-foot">
+          <n-button v-audio:click @click="closeDialog">取消</n-button>
+          <n-button
+            v-audio:click
+            type="primary"
+            :disabled="!eventName.trim()"
+            @click="confirmAddKeyEvent"
+          >确定标记</n-button>
+        </div>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted ,onActivated} from 'vue';
+import { ref, watch, nextTick, onMounted, onActivated } from 'vue';
 import MessageBubble from './MessageBubble.vue';
+import { NModal, NInput, NButton } from 'naive-ui';
 import { useGameSessionStore } from '../stores/gameSession';
+import { useToast } from '../composables/useToast';
 import type { Message } from '@shared/types/store';
 
 const props = defineProps<{ messages: Message[] }>();
 const gameStore = useGameSessionStore();
+const toast = useToast();
 const listRef = ref<HTMLElement | null>(null);
 const bottomRef = ref<HTMLElement | null>(null);
 
@@ -41,7 +80,7 @@ const eventName = ref('');
 const eventDesc = ref('');
 let currentMessage: Message | null = null;
 
-// 滚动到底部（使用 scrollIntoView 更可靠）
+// 滚动到底部
 function scrollToBottom() {
   nextTick(() => {
     if (bottomRef.value) {
@@ -60,17 +99,14 @@ function scrollToBottom() {
   });
 }
 
-// 监听消息数量变化
 watch(() => props.messages.length, () => {
   scrollToBottom();
 }, { immediate: true });
 
-// 监听最后一条消息的内容变化（AI 流式回复时可能需要）
 watch(() => props.messages[props.messages.length - 1]?.content, () => {
   scrollToBottom();
 }, { immediate: true });
 
-// 组件挂载后滚动到底部
 onMounted(() => {
   scrollToBottom();
 });
@@ -81,12 +117,10 @@ onActivated(() => {
 
 function openKeyEventDialog(msg: Message) {
   currentMessage = msg;
-  eventName.value = msg.content.slice(0, 30);
+  eventName.value = msg.content.replace(/[#*`>\n]/g, '').slice(0, 30);
   eventDesc.value = msg.content;
   showDialog.value = true;
 }
-
-
 
 function closeDialog() {
   showDialog.value = false;
@@ -98,25 +132,25 @@ function closeDialog() {
 async function confirmAddKeyEvent() {
   const sessionId = gameStore.currentSessionId;
   if (!sessionId) {
-    alert('当前没有活动会话');
+    toast.error('当前没有活动会话');
     closeDialog();
     return;
   }
   const name = eventName.value.trim();
   if (!name) {
-    alert('事件名称不能为空');
+    toast.error('事件名称不能为空');
     return;
   }
   try {
     const res = await window.electronAPI.game.addKeyEvent(sessionId, name, eventDesc.value);
     if (res.success) {
-      alert(`已标记关键事件：“${name}”`);
+      toast.success(`已标记关键事件：“${name}”`);
       closeDialog();
     } else {
-      alert(`标记失败：${res.error}`);
+      toast.error(`标记失败：${res.error}`);
     }
   } catch (err: any) {
-    alert('标记失败，请查看控制台');
+    toast.error('标记失败，请查看控制台');
     console.error(err);
   }
 }
@@ -126,106 +160,53 @@ async function confirmAddKeyEvent() {
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: var(--space-6) var(--space-7);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-5);
   scroll-behavior: smooth;
 }
 
-.message-wrapper {
-  position: relative;
+/* 空状态 */
+.chat-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--text-secondary);
+  animation: fadeInUp 0.4s ease-out;
+}
+.empty-moon {
+  font-size: 3.4rem;
+  margin-bottom: var(--space-3);
+  filter: drop-shadow(0 0 18px rgba(167, 139, 250, 0.5));
+}
+.chat-empty h3 {
+  margin: 0 0 var(--space-2);
+  font-size: 1.2rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.chat-empty p {
+  margin: 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+/* 标记弹窗 */
+.ke-form {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex-direction: column;
+  gap: var(--space-4);
 }
-
-.message-wrapper.is-assistant {
-  justify-content: flex-start;
-}
-
-.star-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.1rem;
-  opacity: 0.3;
-  transition: opacity 0.2s;
-  padding: 0 4px;
-  margin-top: 4px;
-  flex-shrink: 0;
-}
-
-.star-btn:hover {
-  opacity: 1;
-}
-
-/* 模态框样式 */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.modal-content {
-  background: rgba(20, 22, 40, 0.95);
-  backdrop-filter: blur(12px);
-  border-radius: 24px;
-  padding: 24px;
-  width: 400px;
-  max-width: 90%;
-  color: white;
-  border: 1px solid rgba(139, 92, 246, 0.4);
-}
-.modal-content h3 {
-  margin-top: 0;
-  margin-bottom: 16px;
-}
-.form-row {
-  margin-bottom: 16px;
-}
-.form-row label {
+.ke-field label {
   display: block;
-  margin-bottom: 6px;
+  font-size: 0.84rem;
   font-weight: 500;
-  font-size: 0.85rem;
-  color: #cdc6ff;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
 }
-.form-row input,
-.form-row textarea {
-  width: 100%;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(139, 92, 246, 0.5);
-  border-radius: 16px;
-  color: white;
-  font-size: 0.85rem;
-}
-.modal-buttons {
+.ke-foot {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  margin-top: 20px;
-}
-.modal-buttons button {
-  padding: 6px 16px;
-  border-radius: 20px;
-  border: none;
-  cursor: pointer;
-}
-.modal-buttons button:first-child {
-  background: rgba(255, 255, 255, 0.1);
-  color: #e0d6ff;
-}
-.confirm-btn {
-  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-  color: white;
+  gap: var(--space-3);
 }
 </style>

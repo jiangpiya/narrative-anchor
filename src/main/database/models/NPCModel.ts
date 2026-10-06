@@ -10,6 +10,7 @@ export interface NPCRow {
   relation: string;
   relation_value: number;
   notes: string | null;
+  aliases: string;         // 曾用称谓，JSON 字符串数组，如 '["神秘人"]'
   created_at: string;
 }
 
@@ -37,12 +38,13 @@ export class NPCModel {
     firstAppearanceTurn: number,
     relation: string,
     relationValue: number,
-    notes?: string
+    notes?: string,
+    aliases: string = '[]'
   ): number {
     const npcUuid = crypto.randomUUID();
     const stmt = this.db.prepare(`
-      INSERT INTO npcs (session_id, npc_uuid, name, first_appearance_turn, relation, relation_value, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+      INSERT INTO npcs (session_id, npc_uuid, name, first_appearance_turn, relation, relation_value, notes, aliases, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
     `);
     try {
       const result = stmt.run(
@@ -52,7 +54,8 @@ export class NPCModel {
         firstAppearanceTurn,
         relation,
         relationValue,
-        notes || null
+        notes || null,
+        aliases
       );
       return result.lastInsertRowid as number;
     } catch (err: any) {
@@ -142,9 +145,70 @@ updateNPC(
  * @param relation 可选，新的关系描述
  */
 updateNPCRelation(sessionId: string, name: string, relationValue: number, relation?: string): void {
-  const updates: any = { relationValue };
-  if (relation !== undefined) updates.relation = relation;
-  this.updateNPC(sessionId, name, updates);
+    const updates: any = { relationValue };
+    if (relation !== undefined) updates.relation = relation;
+    this.updateNPC(sessionId, name, updates);
+  }
+
+/**
+ * 同一 NPC 揭示真实身份时改名：更新 name，并把旧称谓记入 aliases
+ * 注意：仅更新 npcs 表；npc_memories.npc_name 的级联更新由 NPCMemoryModel.renameForNPC 完成
+ * @param sessionId 会话 UUID
+ * @param oldName 当前（曾用）名称，必须与已有 NPC 完全一致
+ * @param newName 新的真实名称
+ */
+renameNPC(sessionId: string, oldName: string, newName: string): void {
+  const npc = this.getNPCByName(sessionId, oldName);
+  if (!npc) {
+    throw new Error(`NPC with name "${oldName}" not found in session "${sessionId}".`);
+  }
+
+  let aliasList: string[] = [];
+  try {
+    const parsed = JSON.parse(npc.aliases || '[]');
+    if (Array.isArray(parsed)) aliasList = parsed.filter(a => typeof a === 'string');
+  } catch {
+    aliasList = [];
+  }
+  if (!aliasList.includes(oldName)) aliasList.push(oldName);
+
+  const stmt = this.db.prepare(`
+    UPDATE npcs
+    SET name = ?, aliases = ?, updated_at = datetime('now', 'localtime')
+    WHERE session_id = ? AND name = ?
+  `);
+  try {
+    const result = stmt.run(newName, JSON.stringify(aliasList), sessionId, oldName);
+    if (result.changes === 0) {
+      throw new Error(`Failed to rename NPC "${oldName}" to "${newName}".`);
+    }
+  } catch (err: any) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      throw new Error(`NPC with name "${newName}" already exists in this session.`);
+    }
+    throw err;
+  }
+}
+
+/**
+ * 按名称或曾用称谓解析 NPC（先精确匹配当前名，再匹配 aliases）
+ * @param sessionId 会话 UUID
+ * @param nameOrAlias 当前名或别名
+ */
+resolveNPC(sessionId: string, nameOrAlias: string): NPCRow | undefined {
+  const exact = this.getNPCByName(sessionId, nameOrAlias);
+  if (exact) return exact;
+
+  const stmt = this.db.prepare(`SELECT * FROM npcs WHERE session_id = ?`);
+  const all = stmt.all(sessionId) as NPCRow[];
+  return all.find(npc => {
+    try {
+      const aliases = JSON.parse(npc.aliases || '[]');
+      return Array.isArray(aliases) && aliases.includes(nameOrAlias);
+    } catch {
+      return false;
+    }
+  });
 }
 
 }

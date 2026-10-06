@@ -22,6 +22,10 @@ function getTracker() {
   return recentNPCsTracker;
 }
 
+// 当前进行中轮次的令牌：每次 sendMessage 重新签发；loadSession 时置空
+// 后台提交阶段在每个写入前校验令牌，避免用户切换存档后把上一轮变更写进新存档
+let activeTurnToken: symbol | null = null;
+
 export const useGameSessionStore = defineStore('gameSession', () => {
   // State
   const currentAgentStep = ref<string>('');
@@ -63,8 +67,16 @@ async function callReplyAndSuggestAgent(
     console.warn('[NPC] 获取 NPC 列表失败:', err);
   }
 
-  // ========== 2. 提取提及的 NPC ==========
-  const mentionedNPCNames = extractMentionedNPCs(userInput, allNPCs);
+  // ========== 2. 提取提及的 NPC（无显式名称时用代词回退），并记录到追踪器 ==========
+  const tracker = getTracker();
+  let mentionedNPCNames = extractMentionedNPCs(userInput, allNPCs);
+  if (mentionedNPCNames.length === 0 && /[他她它牠]/.test(userInput)) {
+    const resolved = tracker.resolvePronoun('他');
+    if (resolved && allNPCs.some(n => n.name === resolved)) {
+      mentionedNPCNames = [resolved];
+    }
+  }
+  tracker.addNPCs(mentionedNPCNames, turnNumber.value + 1);
 
   // ========== 3. 构建 NPC 知识边界章节 ==========
   let npcKnowledgeSection = '';
@@ -234,7 +246,7 @@ async function callStateAndNPCAgent(
   currentState: GameState | null,
   existingNPCs: string[],
   coreSettingsContent: string
-): Promise<{ stateDelta: any; new_npcs: any[]; memory_updates: any[]; __audio?: { bgm?: string; ambient?: string } }> {
+): Promise<{ stateDelta: any; new_npcs: any[]; memory_updates: any[]; rename_npcs: any[]; __audio?: { bgm?: string; ambient?: string } }> {
   console.log('[Agent] callStateAndNPCAgent 输入:', {
     finalReply,
     currentState,
@@ -293,6 +305,9 @@ ${coreSettingsContent || '（无额外设定）'}
   "memory_updates": [           // 记忆更新列表，每个包含 npc_name, memory_text, importance（可选，1-10）
     { "npc_name": "Gandalf", "memory_text": "Said he would help us", "importance": 5 }
   ],
+  "rename_npcs": [              // 仅当“已有 NPC 揭示真实姓名/身份”时使用，把旧称谓改为真实姓名
+    { "from": "神秘人", "to": "张三" }
+  ],
   "__audio": {                  // 可选，音频切换指令
     "bgm": "boss",
     "ambient": "dungeon"
@@ -303,13 +318,13 @@ ${coreSettingsContent || '（无额外设定）'}
 【重要】bgm和音效不能频繁更换，除非场景切换导致不得不换bgm或者音效，否则不要切换。bgm和音效不是必填的，如果不要切换就不填此项。
 【重要】状态文本必须简短，单个描述内容不能超过6个字。skills是战斗用的技能，不要随意修改。不要再“（）”添加大量内容，最好用非常简单的话语概括性描述，游戏状态只是玩家面板，不是用来记录剧情的。
 【重要】不要创建【已有 NPC 名称列表】存在的 NPC。如果某个列表为空，可以省略该字段。
-【重要】如果先前未赋予准确名字的 NPC 已经在对话中出现过（无论是否有名字），后续赋予名字时应当调用 updateNPC 修改原有 NPC 的 name 字段，而不是创建新 NPC。
+【重要】如果先前未赋予准确名字的 NPC 已经在对话中出现过（如“神秘人”“黑衣人”“陌生人”等泛称），后续其揭示真实姓名或确定身份时，【必须】通过 rename_npcs 修改原有 NPC（from 为旧称谓、to 为真实姓名），绝不能用 new_npcs 重复创建。from 必须与“已有 NPC 名称列表”中的名字完全一致。
 【重要】输出必须是合法的 JSON 对象，字符串内的换行符必须转义为 \\n，不能包含未转义的控制字符。`;
 
   const messages: ChatMessage[] = [{ role: 'user', content: systemPrompt }];
   const response = await aiService.chat(messages, [], 0.2);
   const content = response.content;
-  if (!content) return { stateDelta: {}, new_npcs: [], memory_updates: [] };
+  if (!content) return { stateDelta: {}, new_npcs: [], memory_updates: [], rename_npcs: [] };
   try {
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON found');
@@ -318,11 +333,12 @@ ${coreSettingsContent || '（无额外设定）'}
       stateDelta: result.stateDelta || {},
       new_npcs: result.new_npcs || [],
       memory_updates: result.memory_updates || [],
+      rename_npcs: result.rename_npcs || [],
       __audio: result.__audio,   // 透传音频指令
     };
   } catch (err) {
     console.error('解析 NPC 代理失败:', content, err);
-    return { stateDelta: {}, new_npcs: [], memory_updates: [] };
+    return { stateDelta: {}, new_npcs: [], memory_updates: [], rename_npcs: [] };
   }
 }
 
@@ -654,6 +670,8 @@ ${recentDialogues}
     async function loadSession(sessionId: string) {
     console.log(`[Store] 开始加载会话: ${sessionId}`);
     try {
+        // 使进行中的轮次令牌失效：旧轮次提交阶段检测到后立即中止，防止串档
+        activeTurnToken = null;
         // 清空当前数据
         messages.value = [];
         currentState.value = null;
@@ -754,6 +772,12 @@ ${recentDialogues}
     const settingsStore = useSettingsStore();
     const coreContent = settingsStore.coreSettingsContent;
 
+    // 签发本轮令牌并固定会话快照：提交阶段只认该快照，存档切换后令牌失效
+    const myToken = Symbol('turn');
+    activeTurnToken = myToken;
+    const isTurnStale = () => activeTurnToken !== myToken;
+    const sessionUuidSnapshot = currentSessionId.value;
+
     try {
       // 乐观添加用户消息
       const userMessage: Message = {
@@ -795,24 +819,24 @@ const assistantMessage: Message = {
 messages.value.push(assistantMessage);
 turnNumber.value = assistantTurn; // 更新 turnNumber 为助理消息的轮次
 
-        // 异步保存用户和助理对话（可选，不阻塞）
+        // 异步保存用户和助理对话（可选，不阻塞；使用本轮会话快照）
     gameService.addDialogue({
-  sessionUuid: currentSessionId.value,
+  sessionUuid: sessionUuidSnapshot,
   speaker: 'player',
   message: userInput,
   turn: userMessageTurn, // 用户消息的轮次
 }).catch(err => console.error('保存用户对话失败:', err));
 
 gameService.addDialogue({
-  sessionUuid: currentSessionId.value,
+  sessionUuid: sessionUuidSnapshot,
   speaker: 'assistant',
   message: finalReply,
   turn: assistantTurn, // 助理消息的轮次
   stateAfter: currentState.value ? JSON.parse(JSON.stringify(currentState.value)) : undefined,
 }).catch(err => console.error('保存助理对话失败:', err));
 
-// 异步触发摘要生成（使用当前轮次，但实际依赖对话 ID）
-checkAndGenerateSummary(currentSessionId.value, turnNumber.value).catch(err => {
+// 异步触发摘要生成（使用本轮会话快照与轮次，但实际依赖对话 ID）
+checkAndGenerateSummary(sessionUuidSnapshot, turnNumber.value).catch(err => {
   console.error('摘要生成失败:', err);
 });
     
@@ -833,96 +857,115 @@ checkAndGenerateSummary(currentSessionId.value, turnNumber.value).catch(err => {
         merge(previewState, stateDelta);
       }
       */
- (async () => {
-      try {                
-       
-       // 3. NPC & 记忆代理
-    const existingNPCs = await getExistingNPCNames(currentSessionId.value!);
-    const { stateDelta, new_npcs, memory_updates, __audio } = await callStateAndNPCAgent(
-      finalReply,
-      currentState.value,
-      existingNPCs,
-      coreContent
-    );
-    console.log('[Agent] 状态变化:', stateDelta);
-    console.log('[Agent] NPC 更新:', { new_npcs, memory_updates });
-    if (__audio) {
-      console.log('[Agent] 音频切换指令:', __audio);
-      if (__audio.bgm) {
-        audioService.playCustomBGM(__audio.bgm);
+    // ========== 提交阶段：await 完成后才释放 isLoading，防止连续消息竞态 ==========
+    setAgentStep('整理状态与记忆');
+    try {
+      if (isTurnStale()) return;
+
+      // 3. NPC & 记忆代理
+      const existingNPCs = await getExistingNPCNames(sessionUuidSnapshot);
+      if (isTurnStale()) return;
+
+      const { stateDelta, new_npcs, memory_updates, rename_npcs, __audio } = await callStateAndNPCAgent(
+        finalReply,
+        currentState.value,
+        existingNPCs,
+        coreContent
+      );
+      console.log('[Agent] 状态变化:', stateDelta);
+      console.log('[Agent] NPC 更新:', { new_npcs, memory_updates });
+      console.log('[Agent] NPC 改名:', rename_npcs);
+      if (isTurnStale()) return;
+
+      // 音频切换（无持久化副作用，可直接执行）
+      if (__audio) {
+        console.log('[Agent] 音频切换指令:', __audio);
+        if (__audio.bgm) {
+          audioService.playCustomBGM(__audio.bgm);
+        }
+        if (__audio.ambient) {
+          audioService.playAmbientByLocation(__audio.ambient);
+        }
       }
-      if (__audio.ambient) {
-        audioService.playAmbientByLocation(__audio.ambient);
+
+      // 4.1 NPC 改名：最先执行，旧称谓记入 aliases，记忆 npc_name 同步级联
+      const renameMap = new Map<string, string>(); // oldName -> newName（本轮）
+      for (const rename of rename_npcs) {
+        const from = rename?.from;
+        const to = rename?.to;
+        if (!from || !to || typeof from !== 'string' || typeof to !== 'string' || from === to) continue;
+        const renameRes = await window.electronAPI.game.renameNPC({
+          sessionUuid: sessionUuidSnapshot,
+          oldName: from,
+          newName: to,
+        });
+        if (renameRes.success) {
+          renameMap.set(from, to);
+          console.log(`[Game] NPC 已改名: ${from} -> ${to}`);
+        } else {
+          console.error(`[Game] NPC 改名失败 ${from} -> ${to}:`, renameRes.error);
+        }
+        if (isTurnStale()) return;
       }
-    }
-    console.log('[Agent] 状态变化:', stateDelta);
-    console.log('[Agent] NPC 更新:', {new_npcs, memory_updates});
-    
 
-      
+      // 4.2 更新游戏状态（如果 stateDelta 非空）
+      if (Object.keys(stateDelta).length > 0) {
+        const newState = { ...currentState.value, ...stateDelta };
+        const updateRes = await gameService.updateState({
+          sessionUuid: sessionUuidSnapshot,
+          stateKey: 'game',
+          stateDelta: newState,
+        });
+        if (updateRes.success) {
+          // 以后端返回的合并结果为准
+          currentState.value = updateRes.data ?? newState;
+        } else {
+          console.error('[Store] 状态保存失败:', updateRes.error);
+        }
+      }
+      if (isTurnStale()) return;
 
-    /*
-      setAgentStep('生成建议行动');
-      // 4. 建议动作代理（基于最终状态）
-      const actions = await callSuggestAgent(previewState, coreContent);
-      suggestedOptions.value = actions;
-      console.log('[Agent] 建议选项:', actions);
-        */
-
-
-
-      // ========== 执行实际的数据变更（IPC） ==========
-      // 4.1 更新游戏状态（如果 stateDelta 非空）
-     // 执行状态更新（如果有）
-        if (Object.keys(stateDelta).length > 0) {
-          const newState = { ...currentState.value, ...stateDelta };
-          await gameService.updateState({
-            sessionUuid: currentSessionId.value!,
-            stateKey: 'game',
-            stateDelta: newState,
+      // 4.3 创建新 NPC（本轮已通过改名处理的旧称谓不再重复创建）
+      for (const npc of new_npcs) {
+        if (!npc?.name || renameMap.has(npc.name)) continue;
+        try {
+          await window.electronAPI.game.createNPC({
+            sessionUuid: sessionUuidSnapshot,
+            name: npc.name,
+            firstAppearanceTurn: turnNumber.value,
+            relation: npc.relation || 'neutral',
+            relationValue: npc.relationValue ?? 0,
+            notes: npc.notes || '',
           });
-          // 更新本地状态（注意：如果用户已经发了新消息，currentState 可能已变，这里简单覆盖）
-          currentState.value = newState;
-        }
-
-        // 创建新 NPC
-        for (const npc of new_npcs) {
-          try {
-            await window.electronAPI.game.createNPC({
-              sessionUuid: currentSessionId.value!,
-              name: npc.name,
-              firstAppearanceTurn: turnNumber.value,
-              relation: npc.relation || 'neutral',
-              relationValue: npc.relationValue ?? 0,
-              notes: npc.notes || '',
-            });
-          } catch (err: any) {
-            if (!err.message?.includes('already exists')) {
-              console.error(`创建 NPC ${npc.name} 失败:`, err);
-            }
+        } catch (err: any) {
+          if (!err.message?.includes('already exists')) {
+            console.error(`创建 NPC ${npc.name} 失败:`, err);
           }
         }
-
-        // 添加记忆
-        for (const mem of memory_updates) {
-          if (!mem.npc_name) continue;
-          try {
-            await window.electronAPI.game.addNPCMemory({
-              sessionUuid: currentSessionId.value!,
-              npc_name: mem.npc_name,
-              memoryText: mem.memory_text,
-              turn: turnNumber.value,
-               importance: mem.importance || 1,  // 如果 AI 提供了 importance 就用，否则默认 1
-              timestamp: Date.now(),
-            });
-          } catch (err) {
-            console.error(`添加记忆失败:`, err);
-          }
-        }
-      } catch (err) {
-        console.error('后台状态/NPC 更新失败:', err);
+        if (isTurnStale()) return;
       }
-    })(); // 异步执行，不等待
+
+      // 4.4 添加记忆（npc_name 经本轮 renameMap 映射为新名）
+      for (const mem of memory_updates) {
+        if (!mem.npc_name) continue;
+        const npcName = renameMap.get(mem.npc_name) || mem.npc_name;
+        try {
+          await window.electronAPI.game.addNPCMemory({
+            sessionUuid: sessionUuidSnapshot,
+            npc_name: npcName,
+            memoryText: mem.memory_text,
+            turn: turnNumber.value,
+            importance: mem.importance || 1,  // 如果 AI 提供了 importance 就用，否则默认 1
+            timestamp: Date.now(),
+          });
+        } catch (err) {
+          console.error(`添加记忆失败:`, err);
+        }
+        if (isTurnStale()) return;
+      }
+    } catch (err) {
+      console.error('本轮状态/NPC 提交失败:', err);
+    }
 
   } catch (error: any) {
     // 如果第一步失败，回滚用户消息

@@ -62,8 +62,10 @@
 import { ref, onMounted ,computed} from 'vue';
 import { audioService } from '../services/audioService';
 import { useSettingsStore } from '../stores/settings';
+import { useToast } from '../composables/useToast';
 
 const settingsStore = useSettingsStore();
+const toast = useToast();
 const emit = defineEmits(['close']);
 
 const tabs = [
@@ -99,7 +101,7 @@ function onAmbientVolumeChange(e: Event) {
 async function toggleFullscreen() {
   // 使用实际暴露的方法名
   if (!window.electronAPI.setWindowFullscreen) {
-    alert('全屏功能未支持');
+    toast.error('全屏功能未支持');
     return;
   }
   const newState = await window.electronAPI.setWindowFullscreen(!isFullscreen.value);

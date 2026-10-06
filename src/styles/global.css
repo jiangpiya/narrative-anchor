@@ -50,6 +50,29 @@
 --btn-ghost-bg: rgba(255, 255, 255, 0.08);
 --btn-ghost-hover: rgba(255, 255, 255, 0.15);
 --chip-bg: rgba(0, 0, 0, 0.5);
+
+  /* ===== 新版（Naive UI 重构批次）设计令牌 ===== */
+  /* 间距刻度 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+
+  /* 玻璃容器 */
+  --glass-bg: rgba(20, 22, 40, 0.55);
+  --glass-blur: 14px;
+  --glass-border: rgba(139, 92, 246, 0.32);
+
+  /* 收敛后的圆角（接近 Naive 的 12px 体系） */
+  --r-lg: 16px;
+
+  /* 表面：输入框 / 遮罩 / 模态 */
+  --input-bg: rgba(0, 0, 0, 0.35);
+  --overlay-bg: rgba(3, 5, 10, 0.72);
+  --modal-bg: rgba(20, 22, 40, 0.92);
 }
 
 /* ========== 全局重置 ========== */

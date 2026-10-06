@@ -158,9 +158,9 @@ export function registerGameHandlers() {
       
       // 如果提供了 stateAfter，保存为状态快照（例如用于标记对话后的状态）
       if (stateAfter !== undefined) {
-        const stateKey = 'dialogue_snapshot';
-        const stateJson = JSON.stringify(stateAfter);
-        models.gameState.appendState(sessionUuid, stateKey, stateJson);
+        // 使用 upsert（INSERT OR REPLACE），避免多条助理消息撞 UNIQUE(session_id, state_key)
+        // 快照只保留最新一条；该快照当前无读取方
+        models.gameState.saveState(sessionUuid, 'dialogue_snapshot', JSON.stringify(stateAfter));
       }
       
       return { success: true, data: undefined };
@@ -236,6 +236,34 @@ ipcMain.handle('game:updateNPCRelation', async (event, params) => {
     return { success: false, error: error.message };
   }
 });
+
+// 同一 NPC 揭示真实身份时改名（神秘人 -> 张三），事务内同步更新 npcs 与 npc_memories
+ipcMain.handle(
+  'game:renameNPC',
+  async (
+    _,
+    params: { sessionUuid: string; oldName: string; newName: string }
+  ): Promise<IpcResponse> => {
+    try {
+      const { sessionUuid, oldName, newName } = params;
+      if (!sessionUuid || !oldName || !newName) {
+        throw new Error('sessionUuid, oldName and newName are required');
+      }
+      const session = models.gameSession.getSessionByUuid(sessionUuid);
+      if (!session) throw new Error(`Session ${sessionUuid} not found`);
+
+      const renameTransaction = getDb().transaction(() => {
+        models.npc.renameNPC(sessionUuid, oldName, newName);
+        models.npcMemory.renameForNPC(sessionUuid, oldName, newName);
+      });
+      renameTransaction();
+      return { success: true, data: undefined };
+    } catch (error: any) {
+      console.error('[IPC] game:renameNPC error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+);
 
   // 添加 NPC 记忆
   ipcMain.handle(IPCChannels.ADD_NPC_MEMORY, async (event, params) => {
@@ -321,8 +349,8 @@ ipcMain.handle('game:duplicateSession', async (event, sessionUuid: string, newNa
       const selectNPCs = db.prepare(`SELECT * FROM npcs WHERE session_id = ?`);
       const oldNPCs = selectNPCs.all(sessionUuid) as any[];
       const insertNPC = db.prepare(`
-        INSERT INTO npcs (npc_uuid, name, session_id, first_appearance_turn, relation, relation_value, notes, created_at, personality, background, avatar_path, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO npcs (npc_uuid, name, session_id, first_appearance_turn, relation, relation_value, notes, aliases, created_at, personality, background, avatar_path, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const npc of oldNPCs) {
         const newNpcUuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}-${npc.name}`;
@@ -334,6 +362,7 @@ ipcMain.handle('game:duplicateSession', async (event, sessionUuid: string, newNa
           npc.relation,
           npc.relation_value,
           npc.notes,
+          npc.aliases || '[]',
           npc.created_at,
           npc.personality,
           npc.background,

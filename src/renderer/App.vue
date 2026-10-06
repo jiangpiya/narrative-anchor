@@ -1,4 +1,7 @@
 <template>
+  <n-config-provider :theme="darkTheme" :theme-overrides="themeOverrides">
+   <n-message-provider>
+    <n-dialog-provider>
   <StarsBackground />
   <div class="app-layout starry-bg">
     <HomePage v-if="showHomePage" @start-game="startGame" />
@@ -22,9 +25,6 @@
       </main>
     </div>
 
-    <ConfirmDialog ref="confirmDialogRef" />
-    <Toast />  <!-- 添加 Toast 组件 -->
-    
     <div v-if="showAIDialog" class="modal-overlay">
       <div class="modal-content">
         <h3>⚠️ 需要配置 AI 服务</h3>
@@ -34,6 +34,9 @@
       </div>
     </div>
   </div>
+    </n-dialog-provider>
+   </n-message-provider>
+  </n-config-provider>
 </template>
 
 <script setup lang="ts">
@@ -43,14 +46,14 @@ import ChatWindow from './components/ChatWindow.vue';
 import StatusPanel from './components/Sidebar/StatusPanel.vue';
 import ArchiveManager from './components/Sidebar/ArchiveManager.vue';
 import SettingsPage from './components/Settings/SettingsPage.vue';
-import ConfirmDialog from './components/ConfirmDialog.vue';
 import { useGameSessionStore } from './stores/gameSession';
 import { useSettingsStore } from './stores/settings';
 import AISettings from './components/Settings/AISettings.vue';
 import { audioService } from './services/audioService';
 import FloatingNavButtons from './components/FloatingNavButtons.vue';  // 导入浮动按钮
 import StarsBackground from './components/StarsBackground.vue';
-import Toast from './components/Toast.vue';  
+import { NConfigProvider, NMessageProvider, NDialogProvider, darkTheme } from 'naive-ui';
+import { themeOverrides } from './ui/theme';
 
 
 const showHomePage = ref(true);
@@ -74,15 +77,6 @@ const switchToChat = () => {
   restoreFocusToInput();
 };
 provide('switchToChat', switchToChat);
-
-const confirmDialogRef = ref<InstanceType<typeof ConfirmDialog> | null>(null);
-provide('confirm', async (title: string, message: string): Promise<boolean> => {
-  if (confirmDialogRef.value && typeof confirmDialogRef.value.open === 'function') {
-    return await confirmDialogRef.value.open(title, message);
-  }
-  console.error('ConfirmDialog 组件尚未挂载或没有 open 方法');
-  return false;
-});
 
 function startGame() {
   showHomePage.value = false;
@@ -228,6 +222,9 @@ onUnmounted(() => {
 
 .main-content {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .main-content.full-width {
